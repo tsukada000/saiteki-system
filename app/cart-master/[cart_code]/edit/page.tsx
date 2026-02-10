@@ -3,15 +3,11 @@
 import { useState, useEffect } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
+import { Database } from '@/types/database';
 import { ArrowLeft, Save } from 'lucide-react';
 import Link from 'next/link';
 
-type CartMaster = {
-  cart_code: string;
-  cart_name: string;
-  has_project_info_in_csv: boolean;
-  remarks: string | null;
-};
+type CartMaster = Database['public']['Tables']['cart_master']['Row'];
 
 export default function EditCartPage() {
   const router = useRouter();
@@ -37,7 +33,7 @@ export default function EditCartPage() {
           .from('cart_master')
           .select('*')
           .eq('cart_code', cartCode)
-          .single();
+          .single<CartMaster>();
 
         if (fetchError) throw fetchError;
 
