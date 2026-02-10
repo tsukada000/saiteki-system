@@ -61,12 +61,14 @@ export default function EditCartPage() {
     setError(null);
 
     try {
+      const remarksValue: string | null = formData.remarks.trim() === '' ? null : formData.remarks;
+
       const { error: updateError } = await supabase
         .from('cart_master')
         .update({
           cart_name: formData.cart_name,
           has_project_info_in_csv: formData.has_project_info_in_csv,
-          remarks: formData.remarks || null,
+          remarks: remarksValue,
         })
         .eq('cart_code', cartCode);
 
