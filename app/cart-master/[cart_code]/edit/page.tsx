@@ -61,13 +61,15 @@ export default function EditCartPage() {
     setError(null);
 
     try {
+      const updateData: Database['public']['Tables']['cart_master']['Update'] = {
+        cart_name: formData.cart_name,
+        has_project_info_in_csv: formData.has_project_info_in_csv,
+        remarks: formData.remarks || null,
+      };
+
       const { error: updateError } = await supabase
         .from('cart_master')
-        .update({
-          cart_name: formData.cart_name,
-          has_project_info_in_csv: formData.has_project_info_in_csv,
-          remarks: formData.remarks || null,
-        })
+        .update(updateData)
         .eq('cart_code', cartCode);
 
       if (updateError) throw updateError;
