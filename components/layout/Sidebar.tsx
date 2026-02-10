@@ -12,9 +12,23 @@ import {
   Package,
   FileSpreadsheet,
   TrendingUp,
+  LucideIcon,
 } from 'lucide-react';
 
-const menuItems = [
+type MenuItem = {
+  title: string;
+  href: string;
+  icon: LucideIcon;
+};
+
+type MenuSection = {
+  title: string;
+  items: MenuItem[];
+};
+
+type MenuItemOrSection = MenuItem | MenuSection;
+
+const menuItems: MenuItemOrSection[] = [
   {
     title: 'ダッシュボード',
     href: '/',
@@ -45,6 +59,10 @@ const menuItems = [
   },
 ];
 
+function isMenuSection(item: MenuItemOrSection): item is MenuSection {
+  return 'items' in item;
+}
+
 export default function Sidebar() {
   const pathname = usePathname();
 
@@ -62,7 +80,7 @@ export default function Sidebar() {
       <nav className="flex-1 overflow-y-auto p-4">
         <ul className="space-y-2">
           {menuItems.map((item, index) => {
-            if ('items' in item) {
+            if (isMenuSection(item)) {
               // Section with sub-items
               return (
                 <li key={index} className="mb-4">
