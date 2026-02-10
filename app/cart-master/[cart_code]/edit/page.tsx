@@ -69,7 +69,7 @@ export default function EditCartPage() {
           cart_name: formData.cart_name,
           has_project_info_in_csv: formData.has_project_info_in_csv,
           remarks: remarksValue,
-        })
+        } as any)
         .eq('cart_code', cartCode);
 
       if (updateError) throw updateError;
