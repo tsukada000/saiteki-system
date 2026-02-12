@@ -7,11 +7,14 @@ import {
   ShoppingCart,
   Globe,
   Warehouse,
+  Building2,
   Users,
   FolderKanban,
   Package,
   FileSpreadsheet,
   TrendingUp,
+  Receipt,
+  FileText,
   LucideIcon,
 } from 'lucide-react';
 
@@ -40,16 +43,20 @@ const menuItems: MenuItemOrSection[] = [
       { title: 'カートマスタ', href: '/cart-master', icon: ShoppingCart },
       { title: 'ECサイトマスタ', href: '/ec-site-master', icon: Globe },
       { title: 'WMSマスタ', href: '/wms-master', icon: Warehouse },
+      { title: '倉庫マスタ', href: '/warehouse-master', icon: Building2 },
+      { title: '請求区分マスタ', href: '/billing-category-master', icon: Receipt },
       { title: 'クライアントマスタ', href: '/client-master', icon: Users },
       { title: '案件マスタ', href: '/project-master', icon: FolderKanban },
       { title: '商品マスタ', href: '/product-master', icon: Package },
+      { title: '商品CSVマスタ', href: '/product-csv-master', icon: FileText },
+      { title: 'WMS CSVマスタ', href: '/wms-csv-master', icon: FileText },
     ],
   },
   {
     title: 'データ登録',
     items: [
-      { title: '商品CSV登録', href: '/product-csv', icon: FileSpreadsheet },
-      { title: 'WMS出荷実績登録', href: '/shipment-records', icon: FileSpreadsheet },
+      { title: '商品CSV取込', href: '/product-csv', icon: FileSpreadsheet },
+      { title: 'WMS出荷実績取込', href: '/shipment-records', icon: FileSpreadsheet },
     ],
   },
   {
