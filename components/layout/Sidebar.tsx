@@ -15,6 +15,7 @@ import {
   TrendingUp,
   Receipt,
   FileText,
+  Truck,
   LucideIcon,
 } from 'lucide-react';
 
@@ -56,7 +57,13 @@ const menuItems: MenuItemOrSection[] = [
     title: 'データ登録',
     items: [
       { title: '商品CSV取込', href: '/product-csv', icon: FileSpreadsheet },
-      { title: 'WMS出荷実績取込', href: '/shipment-records', icon: FileSpreadsheet },
+      { title: 'WMS出荷実績取込', href: '/shipment-records/import', icon: FileSpreadsheet },
+    ],
+  },
+  {
+    title: 'データ管理',
+    items: [
+      { title: '出荷実績一覧', href: '/shipment-records', icon: Truck },
     ],
   },
   {

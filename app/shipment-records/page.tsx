@@ -1,353 +1,113 @@
-'use client';
+import { createClient } from '@/lib/supabase/server';
+import { Upload } from 'lucide-react';
+import Link from 'next/link';
+import DeleteButton from './delete-button';
 
-import { useState, useEffect, useRef } from 'react';
-import { createClient } from '@/lib/supabase/client';
-import { Upload, FileSpreadsheet, CheckCircle, AlertCircle } from 'lucide-react';
+export default async function ShipmentRecordsListPage() {
+  const supabase = await createClient();
 
-type Warehouse = { id: string; warehouse_name: string; wms_id: string };
-type WmsCsvMaster = {
-  order_number_column: string;
-  product_code_column: string;
-  shipment_quantity_column: string;
-  unit_price_column: string;
-  shipment_date_column: string;
-  shipping_fee_column: string | null;
-  shipping_fee_target: string | null;
-  payment_fee_column: string | null;
-  payment_fee_target: string | null;
-  cod_fee_column: string | null;
-  cod_fee_target: string | null;
-};
+  const { data: records, error } = await (supabase
+    .from('shipment_records') as any)
+    .select('*, warehouse_master(warehouse_name)')
+    .order('shipment_date', { ascending: false })
+    .limit(200);
 
-function columnToIndex(col: string): number {
-  let index = 0;
-  const upper = col.toUpperCase();
-  for (let i = 0; i < upper.length; i++) {
-    index = index * 26 + (upper.charCodeAt(i) - 64);
+  if (error) {
+    console.error('Error fetching shipment records:', error);
   }
-  return index - 1;
-}
 
-function parseCSVLine(line: string): string[] {
-  const result: string[] = [];
-  let current = '';
-  let inQuotes = false;
-  for (let i = 0; i < line.length; i++) {
-    const ch = line[i];
-    if (inQuotes) {
-      if (ch === '"' && line[i + 1] === '"') {
-        current += '"';
-        i++;
-      } else if (ch === '"') {
-        inQuotes = false;
-      } else {
-        current += ch;
-      }
-    } else {
-      if (ch === '"') {
-        inQuotes = true;
-      } else if (ch === ',') {
-        result.push(current);
-        current = '';
-      } else {
-        current += ch;
-      }
-    }
-  }
-  result.push(current);
-  return result;
-}
-
-export default function ShipmentRecordsPage() {
-  const supabase = createClient();
-  const fileRef = useRef<HTMLInputElement>(null);
-
-  const [warehouses, setWarehouses] = useState<Warehouse[]>([]);
-  const [selectedWarehouseId, setSelectedWarehouseId] = useState('');
-  const [wmsCsvMaster, setWmsCsvMaster] = useState<WmsCsvMaster | null>(null);
-  const [noConfig, setNoConfig] = useState(false);
-
-  const [file, setFile] = useState<File | null>(null);
-  const [preview, setPreview] = useState<string[][]>([]);
-  const [importing, setImporting] = useState(false);
-  const [result, setResult] = useState<{ success: number; error: number; message: string } | null>(null);
-
-  useEffect(() => {
-    const fetchWarehouses = async () => {
-      const { data } = await (supabase.from('warehouse_master') as any)
-        .select('id, warehouse_name, wms_id')
-        .order('warehouse_name');
-      if (data) setWarehouses(data);
-    };
-    fetchWarehouses();
-  }, [supabase]);
-
-  useEffect(() => {
-    if (!selectedWarehouseId) { setWmsCsvMaster(null); setNoConfig(false); return; }
-    const warehouse = warehouses.find(w => w.id === selectedWarehouseId);
-    if (!warehouse) return;
-
-    const fetchConfig = async () => {
-      const { data } = await (supabase.from('wms_csv_master') as any)
-        .select('*')
-        .eq('wms_id', warehouse.wms_id)
-        .single();
-      if (data) {
-        setWmsCsvMaster(data);
-        setNoConfig(false);
-      } else {
-        setWmsCsvMaster(null);
-        setNoConfig(true);
-      }
-    };
-    fetchConfig();
-  }, [selectedWarehouseId, warehouses, supabase]);
-
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const f = e.target.files?.[0];
-    if (!f) return;
-    setFile(f);
-    setResult(null);
-
-    const reader = new FileReader();
-    reader.onload = (ev) => {
-      const text = ev.target?.result as string;
-      const lines = text.split(/\r?\n/).filter(l => l.trim());
-      const rows = lines.map(parseCSVLine);
-      setPreview(rows.slice(0, 6));
-    };
-    reader.readAsText(f, 'Shift_JIS');
-  };
-
-  const handleImport = async () => {
-    if (!file || !wmsCsvMaster || !selectedWarehouseId) return;
-    setImporting(true);
-    setResult(null);
-
-    try {
-      const text = await new Promise<string>((resolve) => {
-        const reader = new FileReader();
-        reader.onload = (ev) => resolve(ev.target?.result as string);
-        reader.readAsText(file, 'Shift_JIS');
-      });
-
-      const lines = text.split(/\r?\n/).filter(l => l.trim());
-      const rows = lines.map(parseCSVLine);
-
-      // Skip header row
-      const dataRows = rows.slice(1);
-      const orderIdx = columnToIndex(wmsCsvMaster.order_number_column);
-      const codeIdx = columnToIndex(wmsCsvMaster.product_code_column);
-      const qtyIdx = columnToIndex(wmsCsvMaster.shipment_quantity_column);
-      const priceIdx = columnToIndex(wmsCsvMaster.unit_price_column);
-      const dateIdx = columnToIndex(wmsCsvMaster.shipment_date_column);
-      const shipFeeIdx = wmsCsvMaster.shipping_fee_column ? columnToIndex(wmsCsvMaster.shipping_fee_column) : -1;
-      const payFeeIdx = wmsCsvMaster.payment_fee_column ? columnToIndex(wmsCsvMaster.payment_fee_column) : -1;
-      const codFeeIdx = wmsCsvMaster.cod_fee_column ? columnToIndex(wmsCsvMaster.cod_fee_column) : -1;
-
-      const shipFeeTarget = wmsCsvMaster.shipping_fee_target || null;
-      const payFeeTarget = wmsCsvMaster.payment_fee_target || null;
-      const codFeeTarget = wmsCsvMaster.cod_fee_target || null;
-
-      // Track first occurrence per order for fee targets
-      const orderFirstSeen = new Set<string>();
-
-      let successCount = 0;
-      let errorCount = 0;
-
-      // Batch records for bulk insert
-      const records: any[] = [];
-
-      for (const row of dataRows) {
-        const orderNumber = row[orderIdx]?.trim();
-        if (!orderNumber) continue;
-
-        const productCode = row[codeIdx]?.trim() || null;
-        const quantity = parseInt(row[qtyIdx]?.replace(/,/g, '') || '0', 10) || 0;
-        const unitPrice = parseFloat(row[priceIdx]?.replace(/,/g, '') || '0') || 0;
-        const totalAmount = quantity * unitPrice;
-
-        // Parse shipment date
-        const rawDate = row[dateIdx]?.trim() || '';
-        let shipmentDate = rawDate;
-        // Try common date formats: YYYY/MM/DD, YYYY-MM-DD, MM/DD/YYYY
-        if (/^\d{4}[\/\-]\d{1,2}[\/\-]\d{1,2}$/.test(rawDate)) {
-          shipmentDate = rawDate.replace(/\//g, '-');
-        } else if (/^\d{1,2}\/\d{1,2}\/\d{4}$/.test(rawDate)) {
-          const parts = rawDate.split('/');
-          shipmentDate = `${parts[2]}-${parts[0].padStart(2, '0')}-${parts[1].padStart(2, '0')}`;
-        }
-
-        // Fee handling: apply fee only if target matches or if this is the first row for this order
-        const isFirstForOrder = !orderFirstSeen.has(orderNumber);
-        orderFirstSeen.add(orderNumber);
-
-        let shippingFee = 0;
-        if (shipFeeIdx >= 0 && row[shipFeeIdx]) {
-          if (!shipFeeTarget || isFirstForOrder) {
-            shippingFee = parseFloat(row[shipFeeIdx].replace(/,/g, '') || '0') || 0;
-          }
-        }
-
-        let paymentFee = 0;
-        if (payFeeIdx >= 0 && row[payFeeIdx]) {
-          if (!payFeeTarget || isFirstForOrder) {
-            paymentFee = parseFloat(row[payFeeIdx].replace(/,/g, '') || '0') || 0;
-          }
-        }
-
-        let codFee = 0;
-        if (codFeeIdx >= 0 && row[codFeeIdx]) {
-          if (!codFeeTarget || isFirstForOrder) {
-            codFee = parseFloat(row[codFeeIdx].replace(/,/g, '') || '0') || 0;
-          }
-        }
-
-        records.push({
-          warehouse_id: selectedWarehouseId,
-          order_number: orderNumber,
-          product_code: productCode,
-          purchase_quantity: quantity,
-          total_amount: totalAmount,
-          shipping_fee: shippingFee,
-          payment_fee: paymentFee,
-          cod_fee: codFee,
-          shipment_date: shipmentDate,
-        });
-      }
-
-      // Insert in batches of 100
-      for (let i = 0; i < records.length; i += 100) {
-        const batch = records.slice(i, i + 100);
-        const { error } = await (supabase.from('shipment_records') as any).insert(batch);
-        if (error) {
-          errorCount += batch.length;
-        } else {
-          successCount += batch.length;
-        }
-      }
-
-      setResult({
-        success: successCount,
-        error: errorCount,
-        message: `取込完了: ${successCount}件成功${errorCount > 0 ? `、${errorCount}件エラー` : ''}`,
-      });
-    } catch (err) {
-      console.error('Import error:', err);
-      setResult({ success: 0, error: 1, message: 'CSV取込中にエラーが発生しました' });
-    } finally {
-      setImporting(false);
-    }
-  };
+  const totalAmount = records?.reduce((s: number, r: any) => s + Number(r.total_amount), 0) || 0;
+  const totalCount = records?.length || 0;
+  const uniqueOrders = new Set(records?.map((r: any) => r.order_number) || []).size;
 
   return (
-    <div className="space-y-6 max-w-4xl">
-      <div>
-        <h1 className="text-3xl font-bold text-gray-900">WMS出荷実績取込</h1>
-        <p className="text-gray-600 mt-2">WMS CSVマスタの設定に従い、出荷実績CSVから出荷データを一括登録します</p>
+    <div className="space-y-6">
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-3xl font-bold text-gray-900">出荷実績一覧</h1>
+          <p className="text-gray-600 mt-2">取り込んだ出荷実績データを確認・管理します</p>
+        </div>
+        <Link
+          href="/shipment-records/import"
+          className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+        >
+          <Upload className="w-5 h-5" />
+          CSV取込
+        </Link>
       </div>
 
-      {/* Step 1: 倉庫選択 */}
-      <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6 space-y-4">
-        <h2 className="text-lg font-semibold text-gray-900">1. 倉庫を選択</h2>
-        <select value={selectedWarehouseId}
-          onChange={(e) => { setSelectedWarehouseId(e.target.value); setFile(null); setPreview([]); setResult(null); }}
-          className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent">
-          <option value="">選択してください</option>
-          {warehouses.map(w => (
-            <option key={w.id} value={w.id}>{w.warehouse_name}</option>
-          ))}
-        </select>
-
-        {noConfig && (
-          <div className="bg-yellow-50 border border-yellow-200 text-yellow-800 px-4 py-3 rounded-lg flex items-center gap-2">
-            <AlertCircle className="w-5 h-5 shrink-0" />
-            この倉庫のWMSにCSVマスタが設定されていません。先にWMS CSVマスタを登録してください。
+      {totalCount > 0 && (
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4">
+            <p className="text-sm text-gray-600">表示件数</p>
+            <p className="text-xl font-bold text-gray-900">{totalCount.toLocaleString()}件</p>
           </div>
-        )}
-
-        {wmsCsvMaster && (
-          <div className="bg-blue-50 border border-blue-200 text-blue-800 px-4 py-3 rounded-lg text-sm">
-            <p className="font-semibold mb-1">CSV列設定:</p>
-            <div className="flex flex-wrap gap-3">
-              <span>受注番号: <code className="font-mono bg-blue-100 px-1 rounded">{wmsCsvMaster.order_number_column}</code></span>
-              <span>商品コード: <code className="font-mono bg-blue-100 px-1 rounded">{wmsCsvMaster.product_code_column}</code></span>
-              <span>出荷数: <code className="font-mono bg-blue-100 px-1 rounded">{wmsCsvMaster.shipment_quantity_column}</code></span>
-              <span>単価: <code className="font-mono bg-blue-100 px-1 rounded">{wmsCsvMaster.unit_price_column}</code></span>
-              <span>出荷日: <code className="font-mono bg-blue-100 px-1 rounded">{wmsCsvMaster.shipment_date_column}</code></span>
-              {wmsCsvMaster.shipping_fee_column && <span>送料: <code className="font-mono bg-blue-100 px-1 rounded">{wmsCsvMaster.shipping_fee_column}</code></span>}
-              {wmsCsvMaster.payment_fee_column && <span>決済手数料: <code className="font-mono bg-blue-100 px-1 rounded">{wmsCsvMaster.payment_fee_column}</code></span>}
-              {wmsCsvMaster.cod_fee_column && <span>引取手数料: <code className="font-mono bg-blue-100 px-1 rounded">{wmsCsvMaster.cod_fee_column}</code></span>}
-            </div>
+          <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4">
+            <p className="text-sm text-gray-600">受注件数</p>
+            <p className="text-xl font-bold text-gray-900">{uniqueOrders.toLocaleString()}件</p>
           </div>
-        )}
-      </div>
-
-      {/* Step 2: ファイル選択 */}
-      {wmsCsvMaster && (
-        <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6 space-y-4">
-          <h2 className="text-lg font-semibold text-gray-900">2. CSVファイルを選択</h2>
-          <div className="flex items-center gap-4">
-            <button type="button" onClick={() => fileRef.current?.click()}
-              className="flex items-center gap-2 px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors border border-gray-300">
-              <FileSpreadsheet className="w-5 h-5" />ファイルを選択
-            </button>
-            <input ref={fileRef} type="file" accept=".csv" className="hidden" onChange={handleFileChange} />
-            {file && <span className="text-sm text-gray-600">{file.name}</span>}
+          <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4">
+            <p className="text-sm text-gray-600">売上合計</p>
+            <p className="text-xl font-bold text-gray-900">{totalAmount.toLocaleString()}円</p>
           </div>
-          <p className="text-sm text-gray-500">WMS出荷実績CSVファイル（Shift_JIS / UTF-8）を選択してください。1行目はヘッダーとして扱います。</p>
-
-          {preview.length > 0 && (
-            <div className="overflow-x-auto border border-gray-200 rounded-lg">
-              <table className="w-full text-xs">
-                <thead className="bg-gray-50">
-                  <tr>
-                    <th className="px-3 py-2 text-left text-gray-500">行</th>
-                    {preview[0].map((_, i) => (
-                      <th key={i} className="px-3 py-2 text-left text-gray-500 font-mono">
-                        {String.fromCharCode(65 + i)}
-                      </th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-100">
-                  {preview.map((row, ri) => (
-                    <tr key={ri} className={ri === 0 ? 'bg-yellow-50 font-semibold' : ''}>
-                      <td className="px-3 py-1.5 text-gray-400">{ri === 0 ? 'ヘッダー' : ri}</td>
-                      {row.map((cell, ci) => (
-                        <td key={ci} className="px-3 py-1.5 text-gray-700 max-w-[150px] truncate">{cell}</td>
-                      ))}
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
         </div>
       )}
 
-      {/* Step 3: 取込実行 */}
-      {file && wmsCsvMaster && (
-        <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6 space-y-4">
-          <h2 className="text-lg font-semibold text-gray-900">3. 取込実行</h2>
-          <p className="text-sm text-gray-500">
-            出荷実績データを一括登録します。同一データの重複チェックは行いません（追加登録方式）。
-          </p>
-          <button type="button" onClick={handleImport} disabled={importing}
-            className="flex items-center gap-2 px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
-            <Upload className="w-5 h-5" />{importing ? '取込中...' : '取込開始'}
-          </button>
+      <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
+        <div className="overflow-x-auto">
+          <table className="w-full">
+            <thead className="bg-gray-50 border-b border-gray-200">
+              <tr>
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">出荷日</th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">受注番号</th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">商品コード</th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">倉庫</th>
+                <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">数量</th>
+                <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">金額</th>
+                <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">送料</th>
+                <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">決済</th>
+                <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">引取</th>
+                <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">操作</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-200">
+              {records && records.length > 0 ? (
+                records.map((rec: any) => (
+                  <tr key={rec.id} className="hover:bg-gray-50">
+                    <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900">{rec.shipment_date}</td>
+                    <td className="px-4 py-3 whitespace-nowrap text-sm font-mono text-gray-900">{rec.order_number}</td>
+                    <td className="px-4 py-3 whitespace-nowrap text-sm font-mono text-gray-600">{rec.product_code || '-'}</td>
+                    <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-600">
+                      <span className="px-2 py-1 bg-blue-100 text-blue-800 rounded-full text-xs">
+                        {rec.warehouse_master?.warehouse_name || '-'}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-600 text-right">{Number(rec.purchase_quantity).toLocaleString()}</td>
+                    <td className="px-4 py-3 whitespace-nowrap text-sm font-mono text-gray-900 text-right">{Number(rec.total_amount).toLocaleString()}</td>
+                    <td className="px-4 py-3 whitespace-nowrap text-sm font-mono text-gray-600 text-right">{Number(rec.shipping_fee).toLocaleString()}</td>
+                    <td className="px-4 py-3 whitespace-nowrap text-sm font-mono text-gray-600 text-right">{Number(rec.payment_fee).toLocaleString()}</td>
+                    <td className="px-4 py-3 whitespace-nowrap text-sm font-mono text-gray-600 text-right">{Number(rec.cod_fee).toLocaleString()}</td>
+                    <td className="px-4 py-3 whitespace-nowrap text-right">
+                      <DeleteButton id={rec.id} label={rec.order_number} />
+                    </td>
+                  </tr>
+                ))
+              ) : (
+                <tr>
+                  <td colSpan={10} className="px-6 py-12 text-center text-gray-500">
+                    <p className="text-lg">出荷実績が登録されていません</p>
+                    <p className="text-sm mt-2">「CSV取込」ボタンからデータを取り込んでください</p>
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
 
-          {result && (
-            <div className={`px-4 py-3 rounded-lg flex items-center gap-2 ${
-              result.error > 0
-                ? 'bg-yellow-50 border border-yellow-200 text-yellow-800'
-                : 'bg-green-50 border border-green-200 text-green-800'
-            }`}>
-              {result.error > 0 ? <AlertCircle className="w-5 h-5 shrink-0" /> : <CheckCircle className="w-5 h-5 shrink-0" />}
-              {result.message}
-            </div>
-          )}
+      {records && records.length > 0 && (
+        <div className="text-sm text-gray-600">
+          最新 <span className="font-semibold text-gray-900">{records.length}</span> 件を表示（最大200件）
         </div>
       )}
     </div>
